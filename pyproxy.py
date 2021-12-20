@@ -7,17 +7,13 @@ import mc_packet as mcp
 
 BUFFER_SIZE=2*12
 
-def get_initial_fb_connection(host="",port=8000):
+def connect_to_fb_transfer(host="localhost",port=8000):
     '''python 作为server端，需要某种手段建立和fb的链接'''
-    ADDR = (host,port)
+    addr = (host,port)
     proxy = socket.socket(socket.AF_INET,socket.SOCK_STREAM)
-    proxy.bind(ADDR)
-    proxy.listen(3)
-
-    print('Waiting for connection ...')
-    connection,addr = proxy.accept()
-    print("Connection from :",addr)
-    return connection
+    print(f'Try connecting to @ {addr} ...')
+    proxy.connect(addr)
+    return proxy
 
 '''
     从这里开始，是各种处理接收的函数，
@@ -43,46 +39,6 @@ def prase_msg(msg:bytes):
         print(str(decoded_msg))
         return decoded_msg
 
-def fetch_output(connection:socket.socket, queue:Queue):
-    '''
-        需要一个专门的线程来接收输入，
-        理论上 epoll 和 asyncio 是最优选项，但是对python版本有要求
-    '''
-    buffed_bytes=b''
-    required_bytes=0
-    current_bytes=0
-    try:
-        while True:
-            if required_bytes==0:
-                recv_bytes=connection.recv(BUFFER_SIZE)
-                if recv_bytes==b'':
-                    print('connection closed!')
-                    return
-                buffed_bytes+=recv_bytes
-                current_bytes=len(buffed_bytes)
-                if current_bytes>=4:
-                    required_bytes = struct.unpack('I',buffed_bytes[:4])[0]
-            if current_bytes<required_bytes:
-                recv_bytes=connection.recv(BUFFER_SIZE)
-                if recv_bytes==b'':
-                    print('connection closed!')
-                    return
-                buffed_bytes+=recv_bytes
-                current_bytes=len(buffed_bytes)
-            if current_bytes>=required_bytes:
-                msg=buffed_bytes[4:required_bytes]
-                # print('recv: ',msg)
-                # queue.put(msg)
-                decoded_msg=prase_msg(msg)
-                if decoded_msg is not None:
-                    queue.put(decoded_msg)
-                buffed_bytes=buffed_bytes[required_bytes:]
-                current_bytes -= required_bytes
-                required_bytes = 0
-    except Exception as e:
-        connection.close()
-        print('connection closed')
-        raise e
 
 '''
     从这里开始，是各种处理发送的函数，
@@ -127,20 +83,75 @@ def pack_ws_command(command:str,uuid:UUID=None):
     )
     return uuid_bytes,pack_msg(commandRequest,mcp.IDCommandRequest)
 
+def fetch_thread_func(connection:socket.socket, queue:Queue,quit_queue:Queue):
+    '''
+        需要一个专门的线程来接收输入，
+        理论上 epoll 和 asyncio 是最优选项，但是对python版本有要求
+    '''
+    buffed_bytes=b''
+    required_bytes=0
+    current_bytes=0
+    try:
+        while True:
+            if required_bytes==0:
+                recv_bytes=connection.recv(BUFFER_SIZE)
+                if recv_bytes==b'':
+                    print('connection closed!')
+                    return
+                buffed_bytes+=recv_bytes
+                current_bytes=len(buffed_bytes)
+                if current_bytes>=4:
+                    required_bytes = struct.unpack('I',buffed_bytes[:4])[0]
+            if current_bytes<required_bytes:
+                recv_bytes=connection.recv(BUFFER_SIZE)
+                if recv_bytes==b'':
+                    print('connection closed!')
+                    return
+                buffed_bytes+=recv_bytes
+                current_bytes=len(buffed_bytes)
+            if current_bytes>=required_bytes:
+                msg=buffed_bytes[4:required_bytes]
+                # print('recv: ',msg)
+                # queue.put(msg)
+                decoded_msg=prase_msg(msg)
+                if decoded_msg is not None:
+                    queue.put(decoded_msg)
+                buffed_bytes=buffed_bytes[required_bytes:]
+                current_bytes -= required_bytes
+                required_bytes = 0
+    except Exception as e:
+        print('Connection lost!')
+        quit_queue.put(True)
+        connection.close()
+        raise e
+
+def work_thread_func(connection:socket.socket, recv_queue:Queue,quit_queue:Queue):
+    try:
+        while True:
+            command=input('cmd:')
+            uuid_bytes,bytes_to_send=pack_ws_command(command)
+            print(uuid_bytes)
+            send_msg(connection,bytes_to_send)
+            print('send complete')
+    except Exception as e:
+        print('Working thread terminated!')
+        quit_queue.put(True)
+        connection.close()
+        raise e
+        
 if __name__=="__main__":
     # 建立和fb的链接
-    connection=get_initial_fb_connection(port=8000)
+    connection=connect_to_fb_transfer(port=8000)
+    quit_queue = Queue()
     # 建立一个后台线程去处理从fb收到的数据
     recv_queue = Queue()
-    recv_thread = Thread(target=fetch_output, args=(connection, recv_queue))
-    recv_thread.daemon = True # thread dies with the program
+    recv_thread = Thread(target=fetch_thread_func, args=(connection, recv_queue,quit_queue))
+    recv_thread.daemon = True
     recv_thread.start()
+ 
+    work_thread = Thread(target=work_thread_func, args=(connection, recv_queue,quit_queue))
+    work_thread.daemon = True
+    work_thread.start()   
     
-    uuid_map={}
+    quit_queue.get(block=True)
     
-    while True:
-        command=input('cmd:')
-        uuid_bytes,bytes_to_send=pack_ws_command(command)
-        print(bytes_to_send[:16])
-        send_msg(connection,bytes_to_send)
-        print('send complete')

@@ -2,6 +2,10 @@
 __pycache__/
 *.py[cod]
 *$py.class
+/omega
+/logs
+/replaced
+/omega_system.py
 
 # C extensions
 *.so

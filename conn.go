@@ -1,4 +1,4 @@
-// 在 fb 对应文件中添加以下两个函数
+// 在 fb 对应文件(minecraft/conn.go)中添加以下两个函数
 
 func (conn *Conn) WritePacketBytes(data []byte) error {
 	conn.sendMutex.Lock()
@@ -8,21 +8,6 @@ func (conn *Conn) WritePacketBytes(data []byte) error {
 	conn.writeBuf.Reset()
 	return nil
 }
-
-// func (conn *Conn) ReadPacketBytes() (data []byte, err error) {
-// 	if data, ok := conn.takePushedBackPacket(); ok {
-// 		return data, nil
-// 	}
-
-// 	select {
-// 	case data := <-conn.packets:
-// 		return data, nil
-// 	case <-conn.readDeadline:
-// 		return nil, fmt.Errorf("error reading packet: read timeout")
-// 	case <-conn.closeCtx.Done():
-// 		return nil, fmt.Errorf("error reading packet: connection closed")
-// 	}
-// }
 
 func (conn *Conn) ReadPacketAndBytes() (k packet.Packet, data []byte, err error) {
 	if data, ok := conn.takePushedBackPacket(); ok {
