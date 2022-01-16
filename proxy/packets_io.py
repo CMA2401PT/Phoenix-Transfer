@@ -3,6 +3,13 @@ from .buffer_io import BufferDecoder,BufferEncoder
 # only a very small part of packets...
 # go to fb/minecraft/protocol/packet/pool.go for full list
 
+def encode_u_block_position(e:BufferEncoder,i:BlockPos):
+    e.write_var_int32(i.x)
+    e.write_var_uint32(i.y)
+    e.write_var_int32(i.z)
+    return e
+
+
 # Login 
 def decode_login(d:BufferDecoder):
     return Login(d.read_var_uint32(),d.read_tail())
@@ -68,7 +75,25 @@ def decode_move_player(d:BufferDecoder):
         o.TeleportSourceEntityType=d.read_int32()
     o.Counter=d.read_var_uint64()
     return o
-    
+
+# IDCommandBlockUpdate
+def encode_command_block_update(e:BufferEncoder,i:CommandBlockUpdate):
+    e.write_boolen(i.Block)
+    if i.Block:
+        encode_u_block_position(e,i.Position)
+        e.write_var_uint32(i.Mode)
+        e.write_boolen(i.NeedsRedstone)
+        e.write_boolen(i.Conditional)
+    else:
+        e.write_var_uint64(i.MinecartEntityRuntimeID)
+    e.write_str(i.Command)
+    e.write_str(i.LastOutput)
+    e.write_str(i.Name)
+    e.write_boolen(i.ShouldTrackOutput)
+    e.write_var_int32(i.TickDelay)
+    e.write_boolen(i.ExecuteOnFirstTick)
+    return e
+
 # CommandOrigin
 def decode_command_origin_data(d:BufferDecoder):
     o=CommandOrigin()
@@ -107,12 +132,57 @@ def decode_command_output(d:BufferDecoder):
         o.UnknownString=d.read_str()
     return o
 
-# CommandRequest
+# GameRulesChanged 72
+def decode_gamerule_changed(d:BufferDecoder):
+    o=GameRulesChanged()
+    o.GameRules={}
+    count=d.read_var_uint32()
+    for _ in range(count):
+        name=d.read_str()
+        type=d.read_var_uint32()
+        if type==1:
+            val=d.read_boolen()
+        elif type==2:
+            val=d.read_var_uint32()
+        elif type==3:
+            val=d.read_float32()
+        o.GameRules[name]=val
+    return o
+
+# CommandRequest 77
 def encode_command_request(e:BufferEncoder,i:CommandRequest):
     e.write_str(i.CommandLine)
     encode_command_origin_data(e,i.CommandOrigin)
     e.write_boolen(i.Internal)
     e.write_boolen(i.UnLimited)
+    return e
+
+# IDStructureTemplateDataRequest 132
+def encode_vec3(e:BufferEncoder,i:Vec3):
+    e.write_var_int32(i.x)
+    e.write_var_int32(i.y)
+    e.write_var_int32(i.z)
+    
+
+def encode_structure_settings(e:BufferEncoder,i:StructureSettings):
+    e.write_str(i.PaletteName)
+    e.write_byte(i.IgnoreEntities)
+    e.write_byte(i.IgnoreBlocks)
+    encode_u_block_position(e,i.Size)
+    encode_u_block_position(e,i.Offset)
+    e.write_var_int64(i.LastEditingPlayerUniqueID)
+    e.write_byte(i.Rotation)
+    e.write_byte(i.Mirror)
+    e.write_float32(i.Integrity)
+    e.write_uint32(i.Seed)
+    encode_vec3(e,i.Pivot)
+    
+
+def encode_structure_template_data_request(e:BufferEncoder,i:StructureTemplateDataRequest):
+    e.write_str(i.StructureName)
+    encode_u_block_position(e,i.Position)
+    encode_structure_settings(e,i.Settings)
+    e.write_byte(i.RequestType)
     return e
 
 # SettingsCommand
@@ -127,7 +197,11 @@ packet_encode_pool={
     IDSettingsCommand:encode_settings_command,
     SettingsCommand:(IDSettingsCommand,encode_settings_command),
     IDText:encode_text,
-    Text:(IDText,encode_text)
+    Text:(IDText,encode_text),
+    IDStructureTemplateDataRequest:encode_structure_template_data_request,
+    StructureTemplateDataRequest:(IDStructureTemplateDataRequest,encode_structure_template_data_request),
+    IDCommandBlockUpdate:encode_command_block_update,
+    CommandBlockUpdate:(IDCommandBlockUpdate,encode_command_block_update)
 }
 
 packet_decode_pool={
@@ -136,6 +210,7 @@ packet_decode_pool={
     IDCommandOutput:decode_command_output, 
     IDMovePlayer:decode_move_player,   
     IDSetTime:decode_set_time,
+    IDGameRulesChanged:decode_gamerule_changed,
 }
 
 def decode(packet:bytes):

@@ -1,6 +1,8 @@
 import socket
 import threading
 import struct
+
+from numpy.lib.arraysetops import isin
 from .buffer_io import BufferDecoder
 from .buffer_io import BufferEncoder
 from .packets_io import encode
@@ -34,10 +36,27 @@ class Sender(object):
                 raise Exception('send 0 bytes ... connection maybe closed')
         self.mutex.release()
         
+    def send_fb_cmd_str(self,msg:str):
+        msg=msg.encode(encoding="utf-8")
+        msg_len=len(msg)+4
+        full_msg=struct.pack('I',msg_len+2**30)+msg
+        current_send=0
+        self.mutex.acquire()
+        while current_send<msg_len:
+            bytes_sent=self.conn.send(full_msg[current_send:])
+            current_send+=bytes_sent
+            if bytes_sent==0:
+                raise Exception('send 0 bytes ... connection maybe closed')
+        self.mutex.release()
+        
     def __call__(self, msg):
-        if not isinstance(msg,bytes):
+        if isinstance(msg,bytes):
+            return self.send_bytes(msg)
+        elif isinstance(msg,str):
+            self.send_fb_cmd_str(msg)
+        else:
             msg=encode(msg,self.SenderSubClient,self.TargetSubClient)
-        return self.send_bytes(msg)
+            return self.send_bytes(msg)         
     
 class Receiver(object):
     def __init__(self,connection:socket.socket):

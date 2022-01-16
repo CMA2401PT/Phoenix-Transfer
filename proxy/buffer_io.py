@@ -82,18 +82,42 @@ class BufferEncoder(object):
     def append(self,bs:bytes):
         self._bytes_elements.append(bs)
     
+    def write_float32(self,f):
+        self.append(struct.pack('f',f))
+    
     def write_byte(self,b):
         self.append(struct.pack('B',b))
     
     def write_boolen(self,b:bool):
         self.append(struct.pack('B',b))
     
+    def write_uint32(self,i:int):
+        self.append(struct.pack('I',i))
+    
     def write_var_uint32(self,x):
         while x>=0x80:
-            self.write_byte(x|0x80)
+            self.write_byte(int((x%128)+0x80))
             x>>=7
         self.write_byte(x)
-
+        
+    def write_var_int32(self,x):
+        uv=np.uint32(np.uint32(x)<<1)
+        if x<0:
+            uv=~uv
+        self.write_var_uint32(uv)
+        
+    def write_var_uint64(self,x):
+        while x>=0x80:
+            self.write_byte(int((x%128)+0x80))
+            x//=128
+        self.write_byte(int(x))
+        
+    def write_var_int64(self,x):
+        uv=np.uint64(np.uint64(x)*2)
+        if x<0:
+            uv=~uv
+        self.write_var_uint64(uv)
+        
     def write_str(self,s:str):
         es=s.encode(encoding='utf-8')
         self.write_var_uint32(len(es))
