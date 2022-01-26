@@ -10,6 +10,7 @@ IDLogin=1
 IDText=9 
 IDSetTime=10
 IDMovePlayer=19
+IDMobEquipment=31 
 IDPlayerList=63
 IDClientBoundMapItemData=67
 IDGameRulesChanged=72
@@ -30,6 +31,18 @@ class Vec3:
     x:float=0
     y:float=0
     z:float=0
+
+@dataclass
+class ItemType:
+	NetworkID:int=0
+	MetadataValue:int=0
+ 
+@dataclass
+class ItemStack(ItemType):
+    Count:int=0
+    NBTData:Any=None
+    CanBePlacedOn:List[str]=field(default_factory=lambda:[])
+    CanBreak:List[str]=field(default_factory=lambda:[])
 
 # Login 
 @dataclass
@@ -71,7 +84,14 @@ class MovePlayer:
     TeleportCause:int 
     TeleportSourceEntityType:int
     Counter:int
-
+# IDMobEquipment=31 
+@dataclass
+class MobEquipment:
+    EntityRuntimeID:int=0
+    NewItem:ItemStack=field(default_factory=ItemStack)
+    InventorySlot:int=0
+    HotBarSlot:int=0
+    WindowID:int=0
 # IDPlayerList 63
 @dataclass 
 class Skin:

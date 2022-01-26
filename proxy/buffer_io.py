@@ -1,17 +1,12 @@
 import struct
 import numpy as np
+from .nbt import NBTFile
+import io
 class BufferDecoder(object):
     def __init__(self,bytes) -> None:
         self.bytes=bytes
         self.curr=0
         
-    def read_var_int32(self):
-        v_=self.read_uint32()
-        v= np.int32(v_>>1)
-        if (v_&1)!=0:
-            v=~v
-        return int(v)
-            
     def read_var_uint32(self):
         # 我nm真的有必要为了几个比特省到这种地步吗??uint32最多也就5个比特吧??
         i,v=0,0 
@@ -22,6 +17,14 @@ class BufferDecoder(object):
                 return v
             i+=7
         assert False,f'read_var_uint32 fail i:{i} v:{v} {self}'
+
+    def read_var_int32(self):
+        v_=self.read_var_uint32()
+        v= np.int32(v_>>1)
+        if (v_&1)!=0:
+            v=~v
+        return int(v)
+
     def read_var_uint64(self):
         # 我nm真的有必要为了几个比特省到这种地步吗??uint32最多也就5个比特吧??
         i,v=0,0 
@@ -32,7 +35,12 @@ class BufferDecoder(object):
                 return v
             i+=7
         assert False,f'read_var_uint64 fail i:{i} v:{v} {self}'
-
+    def read_var_int64(self):
+        v_=self.read_var_uint64()
+        v= np.int64(v_>>1)
+        if (v_&1)!=0:
+            v=~v
+        return int(v)
     def read_vec3(self):
         self.curr+=12
         return struct.unpack('fff',self.bytes[self.curr-12:self.curr])
@@ -59,12 +67,33 @@ class BufferDecoder(object):
         self.curr+=16
         uuid_bytes=self.bytes[self.curr-16:self.curr]
         return self.reverseUUIDBytes(uuid_bytes)
+    def read_uint8(self):
+        self.curr+=1
+        return struct.unpack('B',self.bytes[self.curr-1:self.curr])[0]
+    def read_int16(self):
+        self.curr+=2
+        return struct.unpack('h',self.bytes[self.curr-2:self.curr])[0]
     def read_int32(self):
         self.curr+=4
         return struct.unpack('i',self.bytes[self.curr-4:self.curr])[0]
     def read_uint32(self):
         self.curr+=4
         return struct.unpack('I',self.bytes[self.curr-4:self.curr])[0]
+    def read_bytes(self,_len):
+        self.curr+=_len
+        return self.bytes[self.curr-_len:self.curr]
+    def read(self,_len):
+        self.curr+=_len
+        return self.bytes[self.curr-_len:self.curr]    
+    def read_nbt(self,_len=None):
+        if _len==None:
+            nbt=NBTFile(self)
+            return nbt.to_py()
+        else:
+            self.curr+=_len
+            bio=io.BytesIO(self.bytes[self.curr-_len:self.curr])
+            nbt=NBTFile(bio)
+            return nbt.to_py()
     
 class BufferEncoder(object):
     def __init__(self) -> None:

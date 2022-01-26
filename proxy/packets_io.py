@@ -76,6 +76,57 @@ def decode_move_player(d:BufferDecoder):
     o.Counter=d.read_var_uint64()
     return o
 
+# IDMobEquipment=31 
+def decode_item(d:BufferDecoder):
+    o=ItemStack()
+    o.NetworkID=d.read_var_int32()
+    if o.NetworkID==0:
+        o.MetadataValue=0
+        o.Count=0
+        o.CanBePlacedOn=None
+        o.CanBreak=None
+        return o 
+    auxValue=d.read_var_int32()
+    o.MetadataValue=(auxValue>>8)&255
+    o.Count=auxValue&255
+    userDataMarker=d.read_int16()
+    if userDataMarker==-1:
+        userDataVersion=d.read_uint8()
+        if userDataVersion==1:
+            o.NBTData=d.read_nbt()
+        else:
+            raise Exception(f"unexpected item user data version {userDataVersion}")
+    elif userDataMarker!=0:
+        if userDataMarker<0:
+            raise Exception(f"invalid NBT length")
+        o.NBTData=d.read_nbt(userDataMarker)
+    count=d.read_var_int32()
+    if count<0:
+        raise Exception('NegativeCountError{Type: "item can be placed on"}')
+    if count>1024:
+        raise Exception(f"item can be placed on")
+    o.CanBePlacedOn=[]
+    for i in range(count):
+        o.CanBePlacedOn.append(d.read_str())
+    
+    count=d.read_var_int32()
+    if count<0:
+        raise Exception('NegativeCountError{Type: "item can break"}')
+    if count>1024:
+        raise Exception(f"item can break")
+    o.CanBreak=[]
+    for i in range(count):
+        o.CanBreak.append(d.read_str())
+    return o
+def decode_mob_equipment(d:BufferDecoder):
+    o=MobEquipment()
+    o.EntityRuntimeID=d.read_var_uint64()
+    o.NewItem=decode_item(d)
+    o.InventorySlot=d.read_byte()
+    o.HotBarSlot=d.read_byte()
+    o.WindowID=d.read_byte()
+    return o
+
 # IDCommandBlockUpdate
 def encode_command_block_update(e:BufferEncoder,i:CommandBlockUpdate):
     e.write_boolen(i.Block)
@@ -209,6 +260,7 @@ packet_decode_pool={
     IDText:decode_text,
     IDCommandOutput:decode_command_output, 
     IDMovePlayer:decode_move_player,   
+    IDMobEquipment:decode_mob_equipment,
     IDSetTime:decode_set_time,
     IDGameRulesChanged:decode_gamerule_changed,
 }
